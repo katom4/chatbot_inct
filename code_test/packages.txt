@@ -1,0 +1,12 @@
+libmagic-dev
+poppler-utils
+libpoppler-dev
+tesseract-ocr
+libtesseract-dev
+tesseract-ocr-jpn
+tesseract-ocr-jpn-vert
+tesseract-ocr-script-jpan
+tesseract-ocr-script-jpan-vert
+libxml2-dev
+libxslt1-dev
+libgl1-mesa-dev
