@@ -1,3 +1,10 @@
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    api_key = os.environ["OPENAI_API_KEY_KATO"]
+)
+
 from langchain.vectorstores.faiss import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
 
@@ -17,29 +24,29 @@ import sys
 import langchain
 import time
 
+from langchain import PromptTemplate
+
 #from prompt_xwin import prompt_template_fewshot, prompt_template, B_INST, E_INST, B_SYS, E_SYS, DEFAULT_SYSTEM_PROMPT, few_shot_context, few_shot_question, few_shot_answer
 
 
 langchain.verbose = True
 
-system_ret = """あなたは与えられた仕事を正確に行う日本語処理システムです。
-今から石川高専に関する質問文を提示するので、それぞれの質問に回答するのに「どのような情報が必要か」を考えて出力してください。
+retrieval_system = """あなたは与えられた仕事を正確に行う日本語処理システムです。
+石川高専に関する質問文を提示するので、それぞれの質問に回答するのに「どのような情報が必要か」を考えて出力してください。
 従うべきいくつかのルール:
 1. 箇条書きで「質問に回答するにはどのような情報が必要か」という内容のみを出力してください。その内容は、具体的な細かい内容にしてください。
 2. 出力する内容は最小で1個、最大で4個にする必要があります。
 3. 「質問に回答するにはどのような情報が必要か」という内容は、可能な限りわかりやすい文章にする必要があります。
 
-
+## 回答の例
 USER: 電子情報工学科と電気工学科の違いは何ですか？
-ASSISTANT: ・電子情報工学科の概要 ・電気工学科の概要 ・電子情報工学科と電気工学科のカリキュラムの違い
+ChatGPT: ・電子情報工学科の概要 ・電気工学科の概要 ・電子情報工学科と電気工学科のカリキュラムの違い
 
 USER: 建築学科で学べることを教えてください。
-ASSISTANT: ・建築学科の概要 ・建築学科のカリキュラム ・建築工学科の科目
+ChatGPT: ・建築学科の概要 ・建築学科のカリキュラム ・建築工学科の科目
+"""
 
-USER: {question}
-ASSISTANT: """
-
-system_ans = """あなたは世界中で信頼されている質問回答システムです。
+answer_system_template = """あなたは世界中で信頼されている質問回答システムです。
 事前知識ではなく、常に提供された質問に関連する情報を用いて質問に回答してください。
 従うべきいくつかのルール:
 1. 与えられた情報の中には、質問の回答に関係のない情報が入っている場合があります。その場合は、該当する情報を無視してください。与えられた情報を全て用いても、質問に回答することができないと判断した場合は、質問に回答せず「情報なし」と出力してください。
@@ -51,9 +58,7 @@ system_ans = """あなたは世界中で信頼されている質問回答シス�
 {context}
 }}
 事前知識ではなく提供された情報を考慮して質問に答えてください。
-
-USER: {question}
-ASSISTANT: """
+"""
 
 def get_answers(db,question, num = 4):
     query = "query: " + question
@@ -75,68 +80,15 @@ def get_answers_with_score(db, question, num = 4):
     
 
 if __name__ == "__main__":
-    prompt_retrieval = PromptTemplate(
-            input_variables=["question"],
-            template = system_ret,
-        )
-    
-    prompt_answer = PromptTemplate(
-            input_variables=["question","context"],
-            template = system_ans,
-        )
-
-    #model_name = "elyza/ELYZA-japanese-Llama-2-7b-instruct"
-    model_name = "TheBloke/Xwin-LM-70B-V0.1-GPTQ"
-    #model_name = "elyza/ELYZA-japanese-Llama-2-7b"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name, 
-        torch_dtype=torch.float16,
-        #device_map="auto"
-        device_map = "auto",
-        )
-
-    model = exllama_set_max_input_length(model, 4096)
-
-    pipe_ret = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_new_tokens=100,
-        do_sample = True,
-        temperature = 0.001,
-        top_p=0.95,
-        #device_map=1
-    )
-
-    pipe_ans = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_new_tokens=1024,
-        do_sample = True,
-        temperature = 0.001,
-        top_p=0.95,
-        #device_map=1
-    )
-
-    llm_ret = HuggingFacePipeline(pipeline=pipe_ret)
-    llm_ans = HuggingFacePipeline(pipeline=pipe_ans)
 
     db = FAISS.load_local(
     "./storage_kosen", HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-large")
     )
 
-    question = "建築工学科と環境都市工学科の違いを教えてください。"
-    chain_retrieval = LLMChain(
-        llm = llm_ret,
-        prompt = prompt_retrieval,
-    )
-
-    chain_answer = LLMChain(
-        llm = llm_ans,
-        prompt = prompt_answer,
+    question = ""
+    answer_system_prompt = PromptTemplate(
+        template = answer_system_template,
+        input_variables = ["context"]
     )
     
     print("--------------------")
@@ -149,21 +101,28 @@ if __name__ == "__main__":
             sys.exit()
         
         start_time = time.time()
-        answer_retrieval = chain_retrieval.run({
-            "question" : question
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "system", "content": retrieval_system},
+                {"role": "user", "content": question}
+            ],
+            temperature = 0.3
+        )
 
-        })
+        answer_retrieval = completion.choices[0].message.content
+
         print("answer_retriebal: ",answer_retrieval)
         make_query_time = time.time() - start_time
         print("make_query_time: ", make_query_time)
         # 変なことを言い出した時にノイズにならないように、改行した後の文章は無視する
         answers_retrieval_0 = answer_retrieval.split("\n\n")
-        #print(answers_retrieval_0)
         answers_retrieval = answers_retrieval_0[0].split("・")
-        #print(answers_retrieval)
         answers_retrieval = answers_retrieval[1:]
+        print(answers_retrieval)
 
         
+
         contexts = []
         contexts_score = []
         context_texts = []
@@ -180,7 +139,7 @@ if __name__ == "__main__":
             text_all = ""
             for t in context_texts:
                 text_all += t
-            if len(text_all) > 1000 and n > 1:
+            if len(text_all) > 1500 and n > 1:
                 n -= 1
                 contexts = []
                 contexts_score = []
@@ -188,13 +147,6 @@ if __name__ == "__main__":
             else:
                 break
         
-        print("----query----")
-        for con in contexts:
-            print("con:",con.page_content)
-        print("--------")
-        
-        
-
         #print("text : " , answers[0].page_content, "metadata : ", answers[0].metadata)
         #for ans in answers_with_score:
         #    print("text : " , ans[0].page_content , "score : " , ans[1] , "metadata : " , ans[0].metadata)
@@ -211,11 +163,21 @@ if __name__ == "__main__":
                 context_text += "\n\n"
         context_text = context_text[:-2]
 
+        print("----context_text----")
+        print(context_text)
+        print("--------")
 
-        result = chain_answer.run({
-            "question" : question,
-            "context" : context_text
-        })
+        answer_system_text = answer_system_prompt.format(context = context_text)
+        completion = client.chat.completions.create(
+                model="gpt-3.5-turbo-1106",
+                messages=[
+                    {"role": "system", "content": answer_system_text},
+                    {"role": "user", "content": question}
+                ],
+                temperature = 0.3
+            )
+
+        result = completion.choices[0].message.content
         total_time = time.time() - start_time
         answer_time = total_time - make_query_time
         print("answer_time :", answer_time, "total_time: ",total_time)
