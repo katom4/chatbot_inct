@@ -7,29 +7,8 @@ client = OpenAI(
 
 from langchain.vectorstores.faiss import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
-
-from langchain.prompts import FewShotPromptTemplate,PromptTemplate
-from langchain.chains import LLMChain,SequentialChain
-
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import pipeline
-from langchain.llms import HuggingFacePipeline
-
-from auto_gptq import exllama_set_max_input_length
-
-import torch
-import sys
-
-import langchain
 import time
-
 from langchain import PromptTemplate
-
-#from prompt_xwin import prompt_template_fewshot, prompt_template, B_INST, E_INST, B_SYS, E_SYS, DEFAULT_SYSTEM_PROMPT, few_shot_context, few_shot_question, few_shot_answer
-
-
-langchain.verbose = True
 
 retrieval_system = """あなたは与えられた仕事を正確に行う日本語処理システムです。
 石川高専に関する質問文を提示するので、それぞれの質問に回答するのに「どのような情報が必要か」を考えて出力してください。
